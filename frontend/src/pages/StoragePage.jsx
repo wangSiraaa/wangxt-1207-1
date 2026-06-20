@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext.jsx';
 import { StatusBadge, Loader, EmptyState, isIncompatible } from '../components/ui.jsx';
 
 export default function StoragePage() {
-  const { roleInfo, pushToast } = useApp();
+  const { role, roleInfo, pushToast } = useApp();
   const [cabs, setCabs] = useState([]);
   const [pending, setPending] = useState([]);
   const [stored, setStored] = useState([]);
@@ -68,7 +68,7 @@ export default function StoragePage() {
       <div className="page-head">
         <h2>暂存入库</h2>
         <p className="desc">学院安全员确认暂存柜容量与相容性，将待暂存废液入柜。</p>
-        <span className="role-hint">当前角色：{roleInfo.officer.label}</span>
+        <span className="role-hint">当前角色：{roleInfo[role].label}</span>
       </div>
 
       <div className="card">

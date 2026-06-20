@@ -1,11 +1,26 @@
 const BASE = '/api';
 
+let _currentRole = 'lab';
+
+export function setRequestRole(role) {
+  _currentRole = role || 'lab';
+}
+
+export function getRequestRole() {
+  return _currentRole;
+}
+
 async function request(path, options = {}) {
   let res;
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Role': _currentRole,
+    ...(options.headers || {}),
+  };
   try {
     res = await fetch(BASE + path, {
-      headers: { 'Content-Type': 'application/json' },
       ...options,
+      headers,
       body: options.body ? JSON.stringify(options.body) : undefined,
     });
   } catch (e) {

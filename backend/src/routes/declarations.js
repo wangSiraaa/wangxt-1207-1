@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { compatibleWithAll, CLASS_LABELS } = require('../rules');
+const { requireRole } = require('../auth');
 const router = express.Router();
 
 const STATUS_LABELS = {
@@ -70,7 +71,7 @@ router.get('/:id', (req, res) => {
   res.json(rowToDecl(row));
 });
 
-router.post('/', (req, res) => {
+router.post('/', requireRole('lab', '新建废液申报'), (req, res) => {
   const { barrel_code, category_id, category_code, lab_name, submitter, remark } = req.body || {};
   if (!barrel_code) return res.status(400).json({ error: '请填写桶码' });
   let cat = null;
@@ -92,7 +93,7 @@ router.post('/', (req, res) => {
   res.status(201).json(rowToDecl(row));
 });
 
-router.patch('/:id', (req, res) => {
+router.patch('/:id', requireRole('lab', '修改申报信息'), (req, res) => {
   const row = db.prepare('SELECT * FROM declarations WHERE id = ?').get(req.params.id);
   if (!row) return res.status(404).json({ error: '申报单不存在' });
 
@@ -139,7 +140,7 @@ router.patch('/:id', (req, res) => {
   res.json(rowToDecl(updated));
 });
 
-router.delete('/:id', (req, res) => {
+router.delete('/:id', requireRole('lab', '删除申报单'), (req, res) => {
   const row = db.prepare('SELECT * FROM declarations WHERE id = ?').get(req.params.id);
   if (!row) return res.status(404).json({ error: '申报单不存在' });
   if (row.status !== 'pending') {
@@ -149,7 +150,7 @@ router.delete('/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-router.post('/:id/store', (req, res) => {
+router.post('/:id/store', requireRole('officer', '暂存入库确认'), (req, res) => {
   const { cabinet_id } = req.body || {};
   if (!cabinet_id) return res.status(400).json({ error: '请选择暂存柜' });
   const row = db.prepare(SELECT_DECL + ' WHERE d.id = ?').get(req.params.id);
@@ -186,7 +187,7 @@ router.post('/:id/store', (req, res) => {
   res.json(rowToDecl(updated));
 });
 
-router.post('/:id/unstore', (req, res) => {
+router.post('/:id/unstore', requireRole('officer', '取消暂存'), (req, res) => {
   const row = db.prepare('SELECT * FROM declarations WHERE id = ?').get(req.params.id);
   if (!row) return res.status(404).json({ error: '申报单不存在' });
   if (row.status !== 'stored') return res.status(400).json({ error: '仅已暂存状态可取消暂存' });
@@ -196,7 +197,7 @@ router.post('/:id/unstore', (req, res) => {
   res.json(rowToDecl(updated));
 });
 
-router.post('/:id/transfer', (req, res) => {
+router.post('/:id/transfer', requireRole('disposal', '登记转运'), (req, res) => {
   const { transfer_unit, operator, vehicle } = req.body || {};
   if (!transfer_unit || !operator) {
     return res.status(400).json({ error: '处置单位、操作人为必填' });
@@ -221,7 +222,7 @@ router.post('/:id/transfer', (req, res) => {
   res.json(rowToDecl(updated));
 });
 
-router.post('/:id/weigh', (req, res) => {
+router.post('/:id/weigh', requireRole('disposal', '处置称重确认'), (req, res) => {
   const { weight } = req.body || {};
   if (weight === undefined || weight === null || Number(weight) < 0 || Number.isNaN(Number(weight))) {
     return res.status(400).json({ error: '请填写有效称重(kg)' });

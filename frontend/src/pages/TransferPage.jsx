@@ -71,6 +71,12 @@ export default function TransferPage() {
 
       <div className="card">
         <h3 className="card-title">待转运废液 <span className="sub">（{stored.length} 桶已暂存）</span></h3>
+        {role !== 'disposal' && (
+          <div className="note" style={{ background: 'var(--amber-l)', padding: 10, borderRadius: 8, marginBottom: 14 }}>
+            <span className="ic">🔒</span>
+            <span>当前角色为<b>「{roleInfo[role].label}」</b>，<b>登记转运</b>操作仅「处置单位」角色可执行。</span>
+          </div>
+        )}
         {stored.length === 0 ? <EmptyState icon="🚚" title="没有待转运的废液" hint="在「暂存」页完成入库后将显示在此" /> : (
           <div>
             {stored.map((d) => {
@@ -89,21 +95,22 @@ export default function TransferPage() {
                   <div className="form-row" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
                     <label className="field">
                       <span className="field-label">处置单位<em>*</em></span>
-                      <input className="in" value={f.transfer_unit} onChange={setF(d.id, 'transfer_unit')} placeholder="如 绿源环保处置中心" />
+                      <input className="in" value={f.transfer_unit} disabled={role !== 'disposal'} onChange={setF(d.id, 'transfer_unit')} placeholder="如 绿源环保处置中心" />
                     </label>
                     <label className="field">
                       <span className="field-label">操作人<em>*</em></span>
-                      <input className="in" value={f.operator} onChange={setF(d.id, 'operator')} placeholder="转运操作人" />
+                      <input className="in" value={f.operator} disabled={role !== 'disposal'} onChange={setF(d.id, 'operator')} placeholder="转运操作人" />
                     </label>
                     <label className="field">
                       <span className="field-label">运输方式/车牌</span>
-                      <input className="in" value={f.vehicle} onChange={setF(d.id, 'vehicle')} placeholder="如 危货车 鲁B·XXXX" />
+                      <input className="in" value={f.vehicle} disabled={role !== 'disposal'} onChange={setF(d.id, 'vehicle')} placeholder="如 危货车 鲁B·XXXX" />
                     </label>
                   </div>
                   <div className="row-actions" style={{ justifyContent: 'flex-end' }}>
-                    <button className="btn primary" disabled={busyId === d.id} onClick={() => doTransfer(d)}>
+                    <button className="btn primary" disabled={role !== 'disposal' || busyId === d.id} onClick={() => doTransfer(d)}>
                       {busyId === d.id ? '登记中…' : '登记转运'}
                     </button>
+                    {role !== 'disposal' && <span className="muted" style={{ fontSize: 12 }}>（仅处置单位可操作）</span>}
                   </div>
                 </div>
               );

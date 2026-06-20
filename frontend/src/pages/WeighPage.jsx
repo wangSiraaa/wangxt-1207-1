@@ -51,6 +51,12 @@ export default function WeighPage() {
 
       <div className="card">
         <h3 className="card-title">待称重废液 <span className="sub">（{transferring.length} 桶转运中）</span></h3>
+        {role !== 'disposal' && (
+          <div className="note" style={{ background: 'var(--amber-l)', padding: 10, borderRadius: 8, marginBottom: 14 }}>
+            <span className="ic">🔒</span>
+            <span>当前角色为<b>「{roleInfo[role].label}」</b>，<b>处置称重</b>操作仅「处置单位」角色可执行。</span>
+          </div>
+        )}
         {transferring.length === 0 ? <EmptyState icon="⚖️" title="没有待称重的废液" hint="在「转运」页登记转运后将显示在此" /> : (
           <div>
             <div className="note" style={{ background: 'var(--amber-l)', padding: 10, borderRadius: 8, marginBottom: 14 }}>
@@ -71,10 +77,12 @@ export default function WeighPage() {
                 <div className="row-actions">
                   <label className="field-label">称重重量 (kg)：</label>
                   <input className="in" style={{ width: 160 }} type="number" step="0.01" min="0"
+                    disabled={role !== 'disposal'}
                     value={weights[d.id] || ''} onChange={(e) => setW(d.id, e.target.value)} placeholder="如 12.50" />
-                  <button className="btn primary" disabled={busyId === d.id} onClick={() => doWeigh(d)}>
+                  <button className="btn primary" disabled={role !== 'disposal' || busyId === d.id} onClick={() => doWeigh(d)}>
                     {busyId === d.id ? '确认中…' : '称重确认（锁定）'}
                   </button>
+                  {role !== 'disposal' && <span className="muted" style={{ fontSize: 12 }}>（仅处置单位可操作）</span>}
                 </div>
               </div>
             ))}

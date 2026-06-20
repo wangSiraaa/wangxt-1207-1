@@ -99,6 +99,12 @@ export default function StoragePage() {
 
       <div className="card">
         <h3 className="card-title">待入库废液 <span className="sub">（{pending.length} 桶待暂存）</span></h3>
+        {role !== 'officer' && (
+          <div className="note" style={{ background: 'var(--amber-l)', padding: 10, borderRadius: 8, marginBottom: 14 }}>
+            <span className="ic">🔒</span>
+            <span>当前角色为<b>「{roleInfo[role].label}」</b>，<b>暂存入库</b>操作仅「学院安全员」角色可执行。</span>
+          </div>
+        )}
         {pending.length === 0 ? <EmptyState icon="✅" title="没有待暂存的废液" hint="实验室提交申报后将显示在此" /> : (
           <div>
             {pending.map((d) => {
@@ -117,7 +123,7 @@ export default function StoragePage() {
                   </div>
                   <div className="row-actions">
                     <span className="field-label" style={{ marginRight: 4 }}>选择暂存柜：</span>
-                    <select className="in" style={{ width: 280 }} value={cabId}
+                    <select className="in" style={{ width: 280 }} value={cabId} disabled={role !== 'officer'}
                       onChange={(e) => setSel((s) => ({ ...s, [d.id]: e.target.value }))}>
                       <option value="">— 请选择 —</option>
                       {cabs.map((c) => {
@@ -128,11 +134,12 @@ export default function StoragePage() {
                         </option>;
                       })}
                     </select>
-                    <button className="btn primary" disabled={busyId === d.id || !cabId || (pv && !pv.ok)} onClick={() => doStore(d)}>
+                    <button className="btn primary" disabled={role !== 'officer' || busyId === d.id || !cabId || (pv && !pv.ok)} onClick={() => doStore(d)}>
                       {busyId === d.id ? '处理中…' : '确认暂存'}
                     </button>
                     {pv && !pv.ok && <span className="warn-inline">⚠ {pv.msg}</span>}
-                    {pv && pv.ok && <span className="ok-inline">✓ 相容且有空位，可入库</span>}
+                    {pv && pv.ok && role === 'officer' && <span className="ok-inline">✓ 相容且有空位，可入库</span>}
+                    {role !== 'officer' && <span className="muted" style={{ fontSize: 12 }}>（仅学院安全员可操作）</span>}
                   </div>
                 </div>
               );
@@ -143,6 +150,12 @@ export default function StoragePage() {
 
       <div className="card">
         <h3 className="card-title">已暂存废液 <span className="sub">（{stored.length} 桶，可取消暂存）</span></h3>
+        {role !== 'officer' && stored.length > 0 && (
+          <div className="note" style={{ background: 'var(--amber-l)', padding: 10, borderRadius: 8, marginBottom: 14 }}>
+            <span className="ic">🔒</span>
+            <span>「取消暂存」操作仅「学院安全员」角色可执行。</span>
+          </div>
+        )}
         {stored.length === 0 ? <EmptyState icon="📦" title="暂存柜为空" /> : (
           <div className="table-wrap">
             <table className="tbl">
@@ -155,7 +168,12 @@ export default function StoragePage() {
                     <td>{d.cabinet_name}</td>
                     <td>{d.lab_name || '—'}</td>
                     <td><StatusBadge status={d.status} /></td>
-                    <td><button className="btn sm" disabled={busyId === d.id} onClick={() => doUnstore(d)}>取消暂存</button></td>
+                    <td>
+                      <button className="btn sm" disabled={role !== 'officer' || busyId === d.id} onClick={() => doUnstore(d)}>
+                        取消暂存
+                      </button>
+                      {role !== 'officer' && <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>（仅安全员）</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>

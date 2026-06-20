@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { setRequestRole } from '../api/client.js';
 
 const Ctx = createContext(null);
 
@@ -9,8 +10,17 @@ const ROLE_DEFAULTS = {
 };
 
 export function AppProvider({ children }) {
-  const [role, setRole] = useState('lab');
+  const [role, setRoleState] = useState('lab');
   const [toasts, setToasts] = useState([]);
+
+  const setRole = useCallback((r) => {
+    setRoleState(r);
+    setRequestRole(r);
+  }, []);
+
+  useEffect(() => {
+    setRequestRole(role);
+  }, [role]);
 
   const pushToast = useCallback((message, type = 'info') => {
     const id = Date.now() + Math.random();

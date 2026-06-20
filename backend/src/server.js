@@ -17,9 +17,12 @@ try {
   // ignore env load errors
 }
 
+const { attachRole } = require('./auth');
+
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(attachRole);
 
 app.get('/api/health', (req, res) => res.json({ ok: true, ts: Date.now() }));
 

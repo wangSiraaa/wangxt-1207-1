@@ -7,6 +7,11 @@ const db = new DatabaseSync(DB_PATH);
 db.exec('PRAGMA journal_mode = WAL;');
 db.exec('PRAGMA foreign_keys = ON;');
 
+function columnExists(tableName, colName) {
+  const row = db.prepare(`PRAGMA table_info(${tableName})`).all();
+  return row.some((r) => r.name === colName);
+}
+
 function init() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS categories (
@@ -31,6 +36,7 @@ function init() {
       submitter TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending',
       cabinet_id INTEGER,
+      declare_weight REAL,
       weight REAL,
       transfer_unit TEXT,
       transfer_operator TEXT,
@@ -59,9 +65,46 @@ function init() {
       FOREIGN KEY (declaration_id) REFERENCES declarations(id)
     );
 
+    CREATE TABLE IF NOT EXISTS review_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      declaration_id INTEGER NOT NULL,
+      barrel_code TEXT NOT NULL,
+      declare_weight REAL NOT NULL,
+      actual_weight REAL NOT NULL,
+      diff_percent REAL NOT NULL,
+      diff_weight REAL NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      review_note TEXT,
+      reviewer TEXT,
+      reviewed_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (declaration_id) REFERENCES declarations(id)
+    );
+  `);
+
+  if (!columnExists('declarations', 'hazard_props')) {
+    db.exec('ALTER TABLE declarations ADD COLUMN hazard_props TEXT');
+  }
+  if (!columnExists('declarations', 'declare_weight')) {
+    db.exec('ALTER TABLE declarations ADD COLUMN declare_weight REAL');
+  }
+  if (!columnExists('transfer_records', 'declare_weight')) {
+    db.exec('ALTER TABLE transfer_records ADD COLUMN declare_weight REAL');
+  }
+  if (!columnExists('transfer_records', 'diff_percent')) {
+    db.exec('ALTER TABLE transfer_records ADD COLUMN diff_percent REAL');
+  }
+  if (!columnExists('review_orders', 'hazard_props')) {
+    db.exec('ALTER TABLE review_orders ADD COLUMN hazard_props TEXT');
+  }
+
+  db.exec(`
     CREATE INDEX IF NOT EXISTS idx_decl_status ON declarations(status);
     CREATE INDEX IF NOT EXISTS idx_decl_cabinet ON declarations(cabinet_id);
     CREATE INDEX IF NOT EXISTS idx_tr_decl ON transfer_records(declaration_id);
+    CREATE INDEX IF NOT EXISTS idx_ro_decl ON review_orders(declaration_id);
+    CREATE INDEX IF NOT EXISTS idx_ro_status ON review_orders(status);
   `);
 
   const catCount = db.prepare('SELECT COUNT(*) AS c FROM categories').get().c;

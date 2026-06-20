@@ -1,6 +1,6 @@
 const express = require('express');
 const db = require('../db');
-const { compatibleWithAll, CLASS_LABELS } = require('../rules');
+const { compatibleWithAll, CLASS_LABELS, validateHazardProps, hazardList, calcDiff, DIFF_THRESHOLD_PERCENT } = require('../rules');
 const { requireRole } = require('../auth');
 const router = express.Router();
 
@@ -9,6 +9,13 @@ const STATUS_LABELS = {
   stored: '已暂存',
   transferring: '转运中',
   weighed: '已称重',
+  review_pending: '待复核',
+};
+
+const REVIEW_STATUS_LABELS = {
+  pending: '待复核',
+  approved: '复核通过',
+  rejected: '复核驳回',
 };
 
 const SELECT_DECL = `
@@ -23,8 +30,17 @@ function now() {
   return new Date().toISOString();
 }
 
+function round2(n) {
+  return Math.round(Number(n) * 100) / 100;
+}
+
 function rowToDecl(r) {
   if (!r) return r;
+  const hazards = hazardList(r.hazard_props);
+  const dw = Number(r.declare_weight) || 0;
+  const aw = Number(r.weight) || 0;
+  const hasBoth = dw > 0 && aw > 0;
+  const diff = hasBoth ? calcDiff(dw, aw) : null;
   return {
     id: r.id,
     barrel_code: r.barrel_code,
@@ -33,13 +49,23 @@ function rowToDecl(r) {
     category_name: r.category_name,
     compat_class: r.compat_class,
     compat_label: CLASS_LABELS[r.compat_class] || r.compat_class,
+    hazard_props: r.hazard_props,
+    hazard_list: hazards,
+    hazard_codes: hazards.map((h) => h.code),
     lab_name: r.lab_name,
     submitter: r.submitter,
     status: r.status,
     status_label: STATUS_LABELS[r.status],
     cabinet_id: r.cabinet_id,
     cabinet_name: r.cabinet_name,
-    weight: r.weight,
+    declare_weight: dw,
+    weight: aw,
+    diff: diff ? {
+      diff_weight: round2(diff.diff_weight),
+      diff_percent: round2(diff.diff_percent),
+      needs_review: diff.needs_review,
+      threshold: DIFF_THRESHOLD_PERCENT,
+    } : null,
     transfer_unit: r.transfer_unit,
     transfer_operator: r.transfer_operator,
     transfer_vehicle: r.transfer_vehicle,
@@ -51,6 +77,38 @@ function rowToDecl(r) {
     updated_at: r.updated_at,
   };
 }
+
+function rowToReview(r) {
+  if (!r) return r;
+  return {
+    id: r.id,
+    declaration_id: r.declaration_id,
+    barrel_code: r.barrel_code,
+    declare_weight: Number(r.declare_weight) || 0,
+    actual_weight: Number(r.actual_weight) || 0,
+    diff_percent: round2(Number(r.diff_percent) || 0),
+    diff_weight: round2(Number(r.diff_weight) || 0),
+    status: r.status,
+    status_label: REVIEW_STATUS_LABELS[r.status] || r.status,
+    review_note: r.review_note,
+    reviewer: r.reviewer,
+    reviewed_at: r.reviewed_at,
+    hazard_list: hazardList(r.hazard_props),
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  };
+}
+
+router.get('/rules/hazards', (req, res) => {
+  const { HAZARD_PROPS, INCOMPATIBLE_PAIRS, CLASS_LABELS, DIFF_THRESHOLD_PERCENT } = require('../rules');
+  res.json({
+    hazards: HAZARD_PROPS,
+    incompatible_pairs: INCOMPATIBLE_PAIRS,
+    class_labels: CLASS_LABELS,
+    diff_threshold_percent: DIFF_THRESHOLD_PERCENT,
+    threshold: DIFF_THRESHOLD_PERCENT,
+  });
+});
 
 router.get('/', (req, res) => {
   const { status } = req.query;
@@ -68,12 +126,26 @@ router.get('/', (req, res) => {
 router.get('/:id', (req, res) => {
   const row = db.prepare(SELECT_DECL + ' WHERE d.id = ?').get(req.params.id);
   if (!row) return res.status(404).json({ error: '申报单不存在' });
-  res.json(rowToDecl(row));
+  const out = rowToDecl(row);
+  const ro = db.prepare('SELECT * FROM review_orders WHERE declaration_id = ? ORDER BY id DESC').all(req.params.id);
+  out.reviews = ro.map(rowToReview);
+  res.json(out);
 });
 
 router.post('/', requireRole('lab', '新建废液申报'), (req, res) => {
-  const { barrel_code, category_id, category_code, lab_name, submitter, remark } = req.body || {};
-  if (!barrel_code) return res.status(400).json({ error: '请填写桶码' });
+  const body = req.body || {};
+  const { barrel_code, category_id, category_code, lab_name, submitter, remark, hazard_props, declare_weight } = body;
+
+  if (!barrel_code || !barrel_code.trim()) return res.status(400).json({ error: '请填写桶码' });
+
+  const hz = validateHazardProps(hazard_props);
+  if (!hz.ok) return res.status(400).json({ error: hz.msg });
+
+  const dw = Number(declare_weight);
+  if (!dw || isNaN(dw) || dw <= 0) {
+    return res.status(400).json({ error: '请填写有效的申报重量(kg)' });
+  }
+
   let cat = null;
   if (category_id) {
     cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(category_id);
@@ -81,14 +153,26 @@ router.post('/', requireRole('lab', '新建废液申报'), (req, res) => {
     cat = db.prepare('SELECT * FROM categories WHERE code = ?').get(category_code);
   }
   if (!cat) return res.status(400).json({ error: '废液类别不存在或未选择' });
-  const dup = db.prepare('SELECT id FROM declarations WHERE barrel_code = ?').get(barrel_code);
+
+  const dup = db.prepare('SELECT id FROM declarations WHERE barrel_code = ?').get(barrel_code.trim());
   if (dup) return res.status(400).json({ error: '桶码已存在，不能重复申报' });
 
   const ts = now();
   const info = db.prepare(`
-    INSERT INTO declarations(barrel_code, category_id, lab_name, submitter, status, remark, created_at, updated_at)
-    VALUES(?, ?, ?, ?, 'pending', ?, ?, ?)
-  `).run(barrel_code, cat.id, lab_name || null, submitter || null, remark || null, ts, ts);
+    INSERT INTO declarations(
+      barrel_code, category_id, lab_name, submitter, status,
+      hazard_props, declare_weight, remark, created_at, updated_at
+    ) VALUES(?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
+  `).run(
+    barrel_code.trim(),
+    cat.id,
+    (lab_name || '').trim() || null,
+    (submitter || '').trim() || null,
+    hz.list.join(','),
+    dw,
+    remark || null,
+    ts, ts
+  );
   const row = db.prepare(SELECT_DECL + ' WHERE d.id = ?').get(info.lastInsertRowid);
   res.status(201).json(rowToDecl(row));
 });
@@ -97,11 +181,27 @@ router.patch('/:id', requireRole('lab', '修改申报信息'), (req, res) => {
   const row = db.prepare('SELECT * FROM declarations WHERE id = ?').get(req.params.id);
   if (!row) return res.status(404).json({ error: '申报单不存在' });
 
-  if (row.status === 'weighed') {
-    return res.status(400).json({ error: '已称重确认，单据已锁定，桶码及信息不可修改' });
+  if (row.status === 'weighed' || row.status === 'review_pending') {
+    return res.status(400).json({ error: '已称重/已进入复核流程，单据已锁定，桶码及信息不可修改' });
   }
 
-  const { barrel_code, category_id, category_code, lab_name, submitter, remark } = req.body || {};
+  const { barrel_code, category_id, category_code, lab_name, submitter, remark, hazard_props, declare_weight } = req.body || {};
+
+  let nextHazards = row.hazard_props;
+  if (hazard_props !== undefined) {
+    const hz = validateHazardProps(hazard_props);
+    if (!hz.ok) return res.status(400).json({ error: hz.msg });
+    nextHazards = hz.list.join(',');
+  }
+
+  let nextDeclareWeight = Number(row.declare_weight) || 0;
+  if (declare_weight !== undefined && declare_weight !== null && declare_weight !== '') {
+    const dw = Number(declare_weight);
+    if (!dw || isNaN(dw) || dw <= 0) {
+      return res.status(400).json({ error: '请填写有效的申报重量(kg)' });
+    }
+    nextDeclareWeight = dw;
+  }
 
   if (barrel_code && barrel_code !== row.barrel_code) {
     const dup = db.prepare('SELECT id FROM declarations WHERE barrel_code = ? AND id <> ?').get(barrel_code, row.id);
@@ -125,7 +225,8 @@ router.patch('/:id', requireRole('lab', '修改申报信息'), (req, res) => {
 
   db.prepare(`
     UPDATE declarations
-    SET barrel_code = ?, category_id = ?, lab_name = ?, submitter = ?, remark = ?, updated_at = ?
+    SET barrel_code = ?, category_id = ?, lab_name = ?, submitter = ?, remark = ?,
+        hazard_props = ?, declare_weight = ?, updated_at = ?
     WHERE id = ?
   `).run(
     barrel_code || row.barrel_code,
@@ -133,6 +234,8 @@ router.patch('/:id', requireRole('lab', '修改申报信息'), (req, res) => {
     lab_name ?? row.lab_name,
     submitter ?? row.submitter,
     remark ?? row.remark,
+    nextHazards,
+    nextDeclareWeight,
     now(),
     row.id
   );
@@ -214,9 +317,9 @@ router.post('/:id/transfer', requireRole('disposal', '登记转运'), (req, res)
   `).run(transfer_unit, operator, vehicle || null, ts, ts, row.id);
 
   db.prepare(`
-    INSERT INTO transfer_records(declaration_id, barrel_code, category_name, transfer_unit, operator, vehicle, transferred_at)
-    VALUES(?, ?, ?, ?, ?, ?, ?)
-  `).run(row.id, row.barrel_code, row.category_name, transfer_unit, operator, vehicle || null, ts);
+    INSERT INTO transfer_records(declaration_id, barrel_code, category_name, transfer_unit, operator, vehicle, transferred_at, declare_weight)
+    VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(row.id, row.barrel_code, row.category_name, transfer_unit, operator, vehicle || null, ts, Number(row.declare_weight) || 0);
 
   const updated = db.prepare(SELECT_DECL + ' WHERE d.id = ?').get(row.id);
   res.json(rowToDecl(updated));
@@ -235,16 +338,137 @@ router.post('/:id/weigh', requireRole('disposal', '处置称重确认'), (req, r
 
   const ts = now();
   const w = Number(weight);
-  db.prepare(`
-    UPDATE declarations SET status = 'weighed', weight = ?, weighed_at = ?, locked = 1, updated_at = ? WHERE id = ?
-  `).run(w, ts, ts, row.id);
+  const dw = Number(row.declare_weight) || 0;
+  const diff = calcDiff(dw, w);
 
-  db.prepare(`
-    UPDATE transfer_records SET weight = ?, weighed_at = ? WHERE declaration_id = ?
-  `).run(w, ts, row.id);
+  let tx;
+  try {
+    db.exec('BEGIN');
+    if (diff.needs_review) {
+      db.prepare(`
+        UPDATE declarations SET status = 'review_pending', weight = ?, weighed_at = ?, locked = 1, updated_at = ? WHERE id = ?
+      `).run(w, ts, ts, row.id);
+
+      db.prepare(`
+        UPDATE transfer_records SET weight = ?, weighed_at = ?, declare_weight = ?, diff_percent = ? WHERE declaration_id = ?
+      `).run(w, ts, dw, round2(diff.diff_percent), row.id);
+
+      const ro = db.prepare(`
+        INSERT INTO review_orders(
+          declaration_id, barrel_code, declare_weight, actual_weight,
+          diff_percent, diff_weight, status, hazard_props, created_at, updated_at
+        ) VALUES(?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+      `).run(
+        row.id,
+        row.barrel_code,
+        dw, w,
+        round2(diff.diff_percent),
+        round2(diff.diff_weight),
+        row.hazard_props,
+        ts, ts
+      );
+
+      tx = { needs_review: true, review_id: ro.lastInsertRowid };
+    } else {
+      db.prepare(`
+        UPDATE declarations SET status = 'weighed', weight = ?, weighed_at = ?, locked = 1, updated_at = ? WHERE id = ?
+      `).run(w, ts, ts, row.id);
+
+      db.prepare(`
+        UPDATE transfer_records SET weight = ?, weighed_at = ?, declare_weight = ?, diff_percent = ? WHERE declaration_id = ?
+      `).run(w, ts, dw, round2(diff.diff_percent), row.id);
+
+      tx = { needs_review: false };
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
 
   const updated = db.prepare(SELECT_DECL + ' WHERE d.id = ?').get(row.id);
-  res.json(rowToDecl(updated));
+  const out = rowToDecl(updated);
+  if (tx.needs_review) {
+    out.review_created = true;
+    out.review_id = tx.review_id;
+    out.message = `称重与申报重量差异超过${round2(diff.diff_percent)}%，已自动生成复核单，请安全员复核`;
+  }
+  res.json(out);
+});
+
+/* ========== 复核单接口 ========== */
+
+router.get('/reviews/list', (req, res) => {
+  const { status } = req.query;
+  let sql = 'SELECT * FROM review_orders';
+  const params = [];
+  if (status) {
+    sql += ' WHERE status = ?';
+    params.push(status);
+  }
+  sql += ' ORDER BY id DESC';
+  const rows = db.prepare(sql).all(...params);
+  res.json(rows.map(rowToReview));
+});
+
+router.get('/reviews/:id', (req, res) => {
+  const row = db.prepare('SELECT * FROM review_orders WHERE id = ?').get(req.params.id);
+  if (!row) return res.status(404).json({ error: '复核单不存在' });
+  const decl = db.prepare(SELECT_DECL + ' WHERE d.id = ?').get(row.declaration_id);
+  const out = rowToReview(row);
+  out.declaration = decl ? rowToDecl(decl) : null;
+  res.json(out);
+});
+
+router.post('/reviews/:id/approve', requireRole(['officer', 'disposal'], '复核通过'), (req, res) => {
+  const { review_note, reviewer } = req.body || {};
+  const row = db.prepare('SELECT * FROM review_orders WHERE id = ?').get(req.params.id);
+  if (!row) return res.status(404).json({ error: '复核单不存在' });
+  if (row.status !== 'pending') {
+    return res.status(400).json({ error: '该复核单已处理' });
+  }
+  const ts = now();
+  db.prepare(`
+    UPDATE review_orders
+    SET status = 'approved', review_note = ?, reviewer = ?, reviewed_at = ?, updated_at = ?
+    WHERE id = ?
+  `).run(review_note || null, reviewer || null, ts, ts, row.id);
+
+  db.prepare(`
+    UPDATE declarations SET status = 'weighed', updated_at = ? WHERE id = ?
+  `).run(ts, row.declaration_id);
+
+  const updated = db.prepare('SELECT * FROM review_orders WHERE id = ?').get(row.id);
+  res.json(rowToReview(updated));
+});
+
+router.post('/reviews/:id/reject', requireRole(['officer', 'disposal'], '复核驳回'), (req, res) => {
+  const { review_note, reviewer } = req.body || {};
+  const row = db.prepare('SELECT * FROM review_orders WHERE id = ?').get(req.params.id);
+  if (!row) return res.status(404).json({ error: '复核单不存在' });
+  if (row.status !== 'pending') {
+    return res.status(400).json({ error: '该复核单已处理' });
+  }
+  if (!review_note || !review_note.trim()) {
+    return res.status(400).json({ error: '驳回需填写复核说明' });
+  }
+  const ts = now();
+  db.prepare(`
+    UPDATE review_orders
+    SET status = 'rejected', review_note = ?, reviewer = ?, reviewed_at = ?, updated_at = ?
+    WHERE id = ?
+  `).run(review_note.trim(), reviewer || null, ts, ts, row.id);
+
+  db.prepare(`
+    UPDATE declarations SET status = 'transferring', locked = 0, weight = NULL, weighed_at = NULL, updated_at = ? WHERE id = ?
+  `).run(ts, row.declaration_id);
+
+  db.prepare(`
+    UPDATE transfer_records SET weight = NULL, weighed_at = NULL, diff_percent = NULL WHERE declaration_id = ?
+  `).run(row.declaration_id);
+
+  const updated = db.prepare('SELECT * FROM review_orders WHERE id = ?').get(row.id);
+  res.json(rowToReview(updated));
 });
 
 module.exports = router;

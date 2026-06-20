@@ -258,3 +258,131 @@ input.in:disabled, select.in:disabled { background: #f4f6f9; color: var(--ink-3)
 .warn-inline { color: var(--red); font-size: 12px; font-weight: 600; display: flex; gap: 4px; align-items: center; }
 .ok-inline { color: var(--green); font-size: 12px; font-weight: 600; display: flex; gap: 4px; align-items: center; }
 .divider { height: 1px; background: var(--line); margin: 4px 0; }
+
+/* ========== Hazard Badges ========== */
+.hz-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.hz {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 3px 9px; border-radius: 6px; font-size: 11.5px; font-weight: 600;
+  background: #fff8e7; color: #b45309; border: 1px solid #f5d28a;
+}
+.hz-sm { padding: 1px 6px; font-size: 10.5px; }
+.hz-sym { font-size: 12px; line-height: 1; }
+.hz-flammable { background: #fff1f0; color: #c0392b; border-color: #f3c2c2; }
+.hz-corrosive { background: #f0f7ff; color: #1d6fe0; border-color: #c5d8f5; }
+.hz-toxic { background: #f4efff; color: #6c3ad1; border-color: #d9cbf5; }
+.hz-oxidizing { background: #fff6e7; color: #b45309; border-color: #f5d28a; }
+.hz-explosive { background: #ffe4e6; color: #be123c; border-color: #f5bcc2; }
+.hz-environmental { background: #e8f6ee; color: #15803d; border-color: #b6e0c5; }
+.hz-irritant { background: #fff8e7; color: #92400e; border-color: #f5d28a; }
+.hz-carcinogen { background: #fdf2f8; color: #9d174d; border-color: #f5bce0; }
+
+/* ========== Weight Diff ========== */
+.wdiff {
+  border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px;
+  background: #fafcfe; display: flex; flex-direction: column; gap: 8px;
+}
+.wdiff.warn {
+  border-color: #f5bcc2; background: #fff1f0;
+}
+.wdiff-row { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; font-size: 13px; }
+.wdiff-k { color: var(--ink-3); font-size: 12px; }
+.wdiff-v { color: var(--ink); font-weight: 600; }
+.wdiff-v.warn-text { color: var(--red); }
+.wdiff-bar {
+  position: relative; height: 10px; background: var(--line-2); border-radius: 999px; overflow: visible;
+}
+.wdiff-bar > i { display: block; height: 100%; border-radius: 999px; background: #22c55e; transition: width .2s; }
+.wdiff-bar > i.danger { background: #ef4444; }
+.wdiff-bar .threshold {
+  position: absolute; top: -2px; transform: translateX(-50%);
+  font-size: 10px; color: var(--red); font-weight: 700;
+}
+.wdiff-alert {
+  padding: 8px 10px; background: #fff; border: 1px dashed #ef4444;
+  border-radius: 6px; color: var(--red); font-size: 12.5px; font-weight: 600;
+}
+
+/* ========== CheckGroup ========== */
+.check-group { display: flex; flex-wrap: wrap; gap: 8px; }
+.chk {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px;
+  background: #fff; cursor: pointer; transition: all .15s; user-select: none;
+}
+.chk:hover { border-color: var(--primary); background: var(--primary-l); }
+.chk.on {
+  border-color: var(--primary); background: var(--primary-l); color: var(--primary-d);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+.chk input { margin: 0; accent-color: var(--primary); }
+.chk-sym { font-size: 14px; }
+.chk-lbl { font-size: 12.5px; font-weight: 600; }
+
+/* ========== StepFlow ========== */
+.stepflow {
+  display: flex; align-items: stretch; padding: 10px 14px;
+  background: #fafcfe; border: 1px solid var(--line); border-radius: var(--radius);
+  margin-bottom: 14px; gap: 0;
+}
+.step {
+  position: relative; flex: 1; display: flex; flex-direction: column; align-items: center;
+  gap: 4px; padding: 4px 0;
+}
+.step .step-ic {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--line-2); color: var(--ink-3); display: flex; align-items: center;
+  justify-content: center; font-size: 17px; border: 2px solid transparent;
+  transition: all .2s;
+}
+.step.done .step-ic { background: var(--green-l); color: var(--green); border-color: #b6e0c5; }
+.step.active .step-ic {
+  background: var(--primary-l); color: var(--primary-d);
+  border-color: var(--primary); box-shadow: 0 0 0 3px rgba(14,124,134,0.12);
+}
+.step.review .step-ic { background: var(--amber-l); color: var(--amber); border-color: #f5d28a; }
+.step.review.active .step-ic {
+  background: var(--amber-l); color: var(--amber);
+  border-color: var(--amber); box-shadow: 0 0 0 3px rgba(180,83,9,0.12);
+}
+.step .step-lb { font-size: 12px; color: var(--ink-3); font-weight: 500; }
+.step.done .step-lb, .step.active .step-lb { color: var(--ink); font-weight: 600; }
+.step-line {
+  position: absolute; left: 50%; top: 22px; right: -50%; height: 2px;
+  background: var(--line-2); z-index: 0;
+}
+.step-line.done { background: var(--green); }
+.step:last-child .step-line { display: none; }
+
+/* ========== Review orders ========== */
+.st-review { background: var(--amber-l); color: var(--amber); }
+.ro-card {
+  border: 1px solid #f5d28a; border-radius: var(--radius); padding: 14px;
+  background: #fffaf0;
+}
+.ro-card + .ro-card { margin-top: 12px; }
+.ro-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.ro-title { font-weight: 700; font-size: 14px; }
+.ro-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px 18px; font-size: 12.5px; }
+.ro-k { color: var(--ink-3); }
+.ro-v { color: var(--ink); font-weight: 600; }
+
+/* ========== Declaration detail card ========== */
+.decl-card {
+  border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; background: #fff;
+}
+.decl-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 18px; font-size: 13px; }
+.decl-k { color: var(--ink-3); font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .3px; }
+.decl-v { color: var(--ink); }
+
+/* ========== Review alert banner ========== */
+.review-banner {
+  padding: 14px 16px; background: var(--amber-l); border: 1px solid #f5d28a;
+  border-radius: var(--radius); color: var(--amber); font-size: 13.5px; font-weight: 600;
+  display: flex; align-items: flex-start; gap: 10px; margin-bottom: 14px;
+}
+.review-banner .ic { font-size: 18px; line-height: 1; }
+
+/* ========== Scrollable table tweaks ========== */
+.small-txt { font-size: 12px; }
+

@@ -40,6 +40,7 @@ async function request(path, options = {}) {
 }
 
 export const api = {
+  getRules: () => request('/declarations/rules/hazards'),
   getCategories: () => request('/categories'),
   getCabinets: () => request('/cabinets'),
   getDeclarations: (status) =>
@@ -58,13 +59,21 @@ export const api = {
   weighDeclaration: (id, weight) =>
     request(`/declarations/${id}/weigh`, { method: 'POST', body: { weight } }),
   getTransfers: () => request('/transfers'),
+  getReviews: (status) =>
+    request('/declarations/reviews/list' + (status ? `?status=${status}` : '')),
+  getReview: (id) => request(`/declarations/reviews/${id}`),
+  approveReview: (id, data) =>
+    request(`/declarations/reviews/${id}/approve`, { method: 'POST', body: data || {} }),
+  rejectReview: (id, data) =>
+    request(`/declarations/reviews/${id}/reject`, { method: 'POST', body: data || {} }),
   getDashboard: async () => {
-    const [decls, cabs, cats, trs] = await Promise.all([
+    const [decls, cabs, cats, trs, reviews] = await Promise.all([
       request('/declarations'),
       request('/cabinets'),
       request('/categories'),
       request('/transfers'),
+      request('/declarations/reviews/list'),
     ]);
-    return { decls, cabs, cats, trs };
+    return { decls, cabs, cats, trs, reviews };
   },
 };
